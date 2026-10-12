@@ -1,11 +1,11 @@
 ﻿
 using Microsoft.EntityFrameworkCore;
+using WebApplication1.Channels;
 using WebApplication1.Core;
 using WebApplication1.Model;
 
 namespace WebApplication1.Endpoints
 {
-
 
     public static class AlertEndpoints
     {
@@ -23,18 +23,27 @@ namespace WebApplication1.Endpoints
             users.MapPost("/", async (
                 string userId,
                 CreateAlertRequest request,
-                AlertsDb db) =>
+                AlertsDb db,
+                IEnumerable<INotificationChannel> channels) =>
             {
                 if (string.IsNullOrWhiteSpace(request.Name) ||
-                    request.Keywords.Count == 0 ||
-                    request.Channels.Count == 0)
+                    request.Keywords is not { Count: > 0 } ||
+                    request.Channels is not { Count: > 0 } ||
+                    request.Categories is null)
                 {
                     return Results.BadRequest(
-                        "Name, keywords and channels are required.");
+                        "Name, keywords, categories and channels are required.");
                 }
 
-                if (request.Channels.Any(c =>
-                    c is not ("email" or "slack")))
+                var channelTypes = channels
+                    .Select(c => c.Type)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var requestedChannels = request.Channels
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (requestedChannels.Any(c => !channelTypes.Contains(c)))
                 {
                     return Results.BadRequest("Unsupported channel.");
                 }
@@ -46,8 +55,7 @@ namespace WebApplication1.Endpoints
                     Keywords = request.Keywords,
                     Categories = request.Categories,
                     Enabled = true,
-                    Channels = request.Channels
-                        .Distinct()
+                    Channels = requestedChannels
                         .Select(c => new AlertChannel { Type = c })
                         .ToList()
                 };
@@ -59,7 +67,76 @@ namespace WebApplication1.Endpoints
                     $"/api/users/{userId}/alerts/{alert.Id}", alert);
             });
 
-            // Ide kerül a meglévő MapPut és MapDelete is.
+            users.MapPut("/{id:int}", async (
+                string userId,
+                int id,
+                UpdateAlertRequest request,
+                AlertsDb db,
+                IEnumerable<INotificationChannel> channels) =>
+            {
+                if (string.IsNullOrWhiteSpace(request.Name) ||
+                    request.Keywords is not { Count: > 0 } ||
+                    request.Channels is not { Count: > 0 } ||
+                    request.Categories is null)
+                {
+                    return Results.BadRequest(
+                        "Name, keywords, categories and channels are required.");
+                }
+
+                var channelTypes = channels
+                    .Select(c => c.Type)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var requestedChannels = request.Channels
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (requestedChannels.Any(c => !channelTypes.Contains(c)))
+                {
+                    return Results.BadRequest("Unsupported channel.");
+                }
+
+                var alert = await db.Alerts
+                    .Include(a => a.Channels)
+                    .FirstOrDefaultAsync(a =>
+                        a.Id == id && a.UserId == userId);
+
+                if (alert is null)
+                    return Results.NotFound();
+
+                alert.Name = request.Name;
+                alert.Keywords = request.Keywords;
+                alert.Categories = request.Categories;
+                alert.Enabled = request.Enabled;
+
+                db.AlertChannels.RemoveRange(alert.Channels);
+
+                alert.Channels = requestedChannels
+                    .Select(c => new AlertChannel { Type = c })
+                    .ToList();
+
+                await db.SaveChangesAsync();
+
+                return Results.NoContent();
+            });
+
+            users.MapDelete("/{id:int}", async (
+                string userId,
+                int id,
+                AlertsDb db) =>
+            {
+                var alert = await db.Alerts
+                    .FirstOrDefaultAsync(a =>
+                        a.Id == id && a.UserId == userId);
+
+                if (alert is null)
+                    return Results.NotFound();
+
+                db.Alerts.Remove(alert);
+                await db.SaveChangesAsync();
+
+                return Results.NoContent();
+            });
 
             return app;
         }

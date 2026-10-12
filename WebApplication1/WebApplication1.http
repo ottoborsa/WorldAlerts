@@ -3,13 +3,12 @@
 @userId = user-123
 @alertId = 1
 
-### 1. Get all alerts for user
-
+### 1. List alerts before testing
 GET {{baseUrl}}/api/users/{{userId}}/alerts
 Accept: application/json
 
-### 2. Create an alert (Email + Slack)
-# @name createAlert
+### 2. Create an alert
+# Copy the returned id into @alertId above before continuing.
 POST {{baseUrl}}/api/users/{{userId}}/alerts
 Content-Type: application/json
 
@@ -20,11 +19,11 @@ Content-Type: application/json
   "channels": ["email", "slack"]
 }
 
-### 3. Get alerts again to verify creation
+### 3. List alerts and verify creation
 GET {{baseUrl}}/api/users/{{userId}}/alerts
 Accept: application/json
 
-### 4. Update an alert
+### 4. Update the alert
 PUT {{baseUrl}}/api/users/{{userId}}/alerts/{{alertId}}
 Content-Type: application/json
 
@@ -36,7 +35,33 @@ Content-Type: application/json
   "enabled": true
 }
 
-### 5. Disable an alert
+### 5. Submit a matching event
+# Should attempt one notification for the enabled alert.
+POST {{baseUrl}}/api/events
+Content-Type: application/json
+
+{
+  "title": "OpenAI announces new AI technology",
+  "description": "Microsoft and OpenAI reveal a new AI development.",
+  "category": "news"
+}
+
+### 6. Submit a non-matching event
+# Should not match the updated keywords.
+POST {{baseUrl}}/api/events
+Content-Type: application/json
+
+{
+  "title": "Major earthquake reported",
+  "description": "Emergency services respond to an earthquake.",
+  "category": "disaster"
+}
+
+### 7. Inspect delivery attempts
+GET {{baseUrl}}/api/admin/deliveries
+Accept: application/json
+
+### 8. Disable the alert
 PUT {{baseUrl}}/api/users/{{userId}}/alerts/{{alertId}}
 Content-Type: application/json
 
@@ -48,37 +73,27 @@ Content-Type: application/json
   "enabled": false
 }
 
-### 6. Submit a matching event
+### 9. Submit a matching event while alert is disabled
+# Should attempt zero notifications if no other alerts match.
 POST {{baseUrl}}/api/events
 Content-Type: application/json
 
 {
-  "title": "OpenAI announces new AI technology",
-  "description": "Microsoft and OpenAI reveal a new AI development.",
+  "title": "Azure announces new AI technology",
+  "description": "A new AI development is announced.",
   "category": "news"
 }
 
-### 7. Submit a non-matching event
-POST {{baseUrl}}/api/events
-Content-Type: application/json
-
-{
-  "title": "Major earthquake reported",
-  "description": "Emergency services respond to an earthquake.",
-  "category": "disaster"
-}
-
-### 8. Admin: list all alerts
+### 10. List all alerts (admin)
 GET {{baseUrl}}/api/admin/alerts
 Accept: application/json
 
-### 9. Admin: inspect delivery attempts
-GET {{baseUrl}}/api/admin/deliveries
-Accept: application/json
-
-### 10. Delete an alert
+### 11. Delete the alert
 DELETE {{baseUrl}}/api/users/{{userId}}/alerts/{{alertId}}
 
-### 11. Verify deletion
+### 12. Verify deletion
 GET {{baseUrl}}/api/users/{{userId}}/alerts
 Accept: application/json
+
+### 13. Verify missing alert returns 404
+DELETE {{baseUrl}}/api/users/{{userId}}/alerts/{{alertId}}
