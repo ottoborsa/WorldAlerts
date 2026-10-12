@@ -63,7 +63,8 @@ The SQLite database is created automatically on startup.
 - I defined the demo project's architecture and selected the technologies to be used.
 - I then used AI to generate the initial implementation based on these decisions.
 - I verified the generated code, established the project structure, fixed minor issues, and tested the endpoints.
-- The implementation was developed locally and uploaded to GitHub in a single initial commit after a relatively short development cycle. Therefore, the repository does not reflect the individual development steps.
+- The initial implementation was uploaded to GitHub first, followed by incremental commits for subsequent improvements. The commit history reflects selected development milestones rather than every implementation step.
+
 
 ### Potential Improvements
 

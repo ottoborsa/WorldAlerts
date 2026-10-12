@@ -97,3 +97,26 @@ Accept: application/json
 
 ### 13. Verify missing alert returns 404
 DELETE {{baseUrl}}/api/users/{{userId}}/alerts/{{alertId}}
+
+
+### 14. Channel validation: uppercase EMAIL should be accepted and normalized
+POST {{baseUrl}}/api/users/{{userId}}/alerts
+Content-Type: application/json
+
+{
+  "name": "Uppercase channel test",
+  "keywords": ["test"],
+  "categories": [],
+  "channels": ["EMAIL"]
+}
+
+### 15. Channel validation: unregistered channel should be rejected
+POST {{baseUrl}}/api/users/{{userId}}/alerts
+Content-Type: application/json
+
+{
+  "name": "Unsupported channel test",
+  "keywords": ["test"],
+  "categories": [],
+  "channels": ["telegram"]
+}
