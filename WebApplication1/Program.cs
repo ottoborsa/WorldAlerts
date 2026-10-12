@@ -4,13 +4,13 @@ using WebApplication1.Channels;
 using WebApplication1.Core;
 using WebApplication1.Endpoints;
 
-
-
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<AlertsDb>(options => options.UseSqlite("Data Source=alerts.db"));
+builder.Services.AddDbContext<AlertsDb>(
+    options => options.UseSqlite("Data Source=alerts.db"));
 
 builder.Services.AddScoped<AlertService>();
+
 builder.Services.AddScoped<INotificationChannel, EmailChannel>();
 builder.Services.AddScoped<INotificationChannel, SlackChannel>();
 
@@ -22,12 +22,8 @@ using (var scope = app.Services.CreateScope())
     db.Database.EnsureCreated();
 }
 
-
 app.MapAlertEndpoints();
 app.MapEventEndpoints();
 app.MapAdminEndpoints();
 
-
 app.Run();
-
-

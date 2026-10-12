@@ -5,9 +5,15 @@ using WebApplication1.Model;
 
 namespace WebApplication1.Core
 {
-    sealed class AlertService(AlertsDb db, IEnumerable<INotificationChannel> channels, ILogger<AlertService> logger)
+
+    sealed class AlertService(
+        AlertsDb db,
+        IEnumerable<INotificationChannel> channels,
+        ILogger<AlertService> logger)
     {
-        public async Task<int> ProcessAsync(WorldEvent worldEvent, CancellationToken cancellationToken = default)
+        public async Task<int> ProcessAsync(
+            WorldEvent worldEvent,
+            CancellationToken cancellationToken = default)
         {
             var alerts = await db.Alerts
                 .Include(a => a.Channels)
@@ -34,11 +40,16 @@ namespace WebApplication1.Core
                     try
                     {
                         var channel = channels.FirstOrDefault(c =>
-                            c.Type == configuredChannel.Type);
+                            string.Equals(
+                                c.Type,
+                                configuredChannel.Type,
+                                StringComparison.OrdinalIgnoreCase));
 
                         if (channel is null)
+                        {
                             throw new InvalidOperationException(
                                 $"Channel '{configuredChannel.Type}' is not registered.");
+                        }
 
                         await channel.SendAsync(
                             alert, worldEvent, cancellationToken);
@@ -50,7 +61,8 @@ namespace WebApplication1.Core
                         delivery.Status = "Failed";
                         delivery.Error = ex.Message;
 
-                        logger.LogError(ex,
+                        logger.LogError(
+                            ex,
                             "Delivery failed for alert {AlertId}",
                             alert.Id);
                     }

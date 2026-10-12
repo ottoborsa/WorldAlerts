@@ -4,141 +4,154 @@ using WebApplication1.Channels;
 using WebApplication1.Core;
 using WebApplication1.Model;
 
-namespace WebApplication1.Endpoints
+namespace WebApplication1.Endpoints;
+
+public static class AlertEndpoints
 {
-
-    public static class AlertEndpoints
+    public static IEndpointRouteBuilder MapAlertEndpoints(
+        this IEndpointRouteBuilder app)
     {
-        public static IEndpointRouteBuilder MapAlertEndpoints(
-            this IEndpointRouteBuilder app)
+        var users = app.MapGroup("/api/users/{userId}/alerts");
+
+        users.MapGet("/", async (string userId, AlertsDb db) =>
+            await db.Alerts
+                .Include(a => a.Channels)
+                .Where(a => a.UserId == userId)
+                .ToListAsync());
+
+        users.MapPost("/", async (
+            string userId,
+            CreateAlertRequest request,
+            AlertsDb db,
+            IEnumerable<INotificationChannel> channels) =>
         {
-            var users = app.MapGroup("/api/users/{userId}/alerts");
-
-            users.MapGet("/", async (string userId, AlertsDb db) =>
-                await db.Alerts
-                    .Include(a => a.Channels)
-                    .Where(a => a.UserId == userId)
-                    .ToListAsync());
-
-            users.MapPost("/", async (
-                string userId,
-                CreateAlertRequest request,
-                AlertsDb db,
-                IEnumerable<INotificationChannel> channels) =>
+            if (string.IsNullOrWhiteSpace(request.Name) ||
+                request.Keywords is not { Count: > 0 } ||
+                request.Categories is null)
             {
-                if (string.IsNullOrWhiteSpace(request.Name) ||
-                    request.Keywords is not { Count: > 0 } ||
-                    request.Channels is not { Count: > 0 } ||
-                    request.Categories is null)
-                {
-                    return Results.BadRequest(
-                        "Name, keywords, categories and channels are required.");
-                }
+                return Results.BadRequest(
+                    "Name, keywords and categories are required.");
+            }
 
-                var channelTypes = channels
-                    .Select(c => c.Type)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-                var requestedChannels = request.Channels
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                if (requestedChannels.Any(c => !channelTypes.Contains(c)))
-                {
-                    return Results.BadRequest("Unsupported channel.");
-                }
-
-                var alert = new Alert
-                {
-                    UserId = userId,
-                    Name = request.Name,
-                    Keywords = request.Keywords,
-                    Categories = request.Categories,
-                    Enabled = true,
-                    Channels = requestedChannels
-                        .Select(c => new AlertChannel { Type = c })
-                        .ToList()
-                };
-
-                db.Alerts.Add(alert);
-                await db.SaveChangesAsync();
-
-                return Results.Created(
-                    $"/api/users/{userId}/alerts/{alert.Id}", alert);
-            });
-
-            users.MapPut("/{id:int}", async (
-                string userId,
-                int id,
-                UpdateAlertRequest request,
-                AlertsDb db,
-                IEnumerable<INotificationChannel> channels) =>
+            if (!TryNormalizeChannels(
+                    request.Channels, channels, out var normalizedChannels))
             {
-                if (string.IsNullOrWhiteSpace(request.Name) ||
-                    request.Keywords is not { Count: > 0 } ||
-                    request.Channels is not { Count: > 0 } ||
-                    request.Categories is null)
-                {
-                    return Results.BadRequest(
-                        "Name, keywords, categories and channels are required.");
-                }
+                return Results.BadRequest("Invalid or unsupported channel.");
+            }
 
-                var channelTypes = channels
-                    .Select(c => c.Type)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-                var requestedChannels = request.Channels
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                if (requestedChannels.Any(c => !channelTypes.Contains(c)))
-                {
-                    return Results.BadRequest("Unsupported channel.");
-                }
-
-                var alert = await db.Alerts
-                    .Include(a => a.Channels)
-                    .FirstOrDefaultAsync(a =>
-                        a.Id == id && a.UserId == userId);
-
-                if (alert is null)
-                    return Results.NotFound();
-
-                alert.Name = request.Name;
-                alert.Keywords = request.Keywords;
-                alert.Categories = request.Categories;
-                alert.Enabled = request.Enabled;
-
-                db.AlertChannels.RemoveRange(alert.Channels);
-
-                alert.Channels = requestedChannels
+            var alert = new Alert
+            {
+                UserId = userId,
+                Name = request.Name,
+                Keywords = request.Keywords,
+                Categories = request.Categories,
+                Enabled = true,
+                Channels = normalizedChannels
                     .Select(c => new AlertChannel { Type = c })
-                    .ToList();
+                    .ToList()
+            };
 
-                await db.SaveChangesAsync();
+            db.Alerts.Add(alert);
+            await db.SaveChangesAsync();
 
-                return Results.NoContent();
-            });
+            return Results.Created(
+                $"/api/users/{userId}/alerts/{alert.Id}", alert);
+        });
 
-            users.MapDelete("/{id:int}", async (
-                string userId,
-                int id,
-                AlertsDb db) =>
+        users.MapPut("/{id:int}", async (
+            string userId,
+            int id,
+            UpdateAlertRequest request,
+            AlertsDb db,
+            IEnumerable<INotificationChannel> channels) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Name) ||
+                request.Keywords is not { Count: > 0 } ||
+                request.Categories is null)
             {
-                var alert = await db.Alerts
-                    .FirstOrDefaultAsync(a =>
-                        a.Id == id && a.UserId == userId);
+                return Results.BadRequest(
+                    "Name, keywords and categories are required.");
+            }
 
-                if (alert is null)
-                    return Results.NotFound();
+            if (!TryNormalizeChannels(
+                    request.Channels, channels, out var normalizedChannels))
+            {
+                return Results.BadRequest("Invalid or unsupported channel.");
+            }
 
-                db.Alerts.Remove(alert);
-                await db.SaveChangesAsync();
+            var alert = await db.Alerts
+                .Include(a => a.Channels)
+                .FirstOrDefaultAsync(a =>
+                    a.Id == id && a.UserId == userId);
 
-                return Results.NoContent();
-            });
+            if (alert is null)
+                return Results.NotFound();
 
-            return app;
+            alert.Name = request.Name;
+            alert.Keywords = request.Keywords;
+            alert.Categories = request.Categories;
+            alert.Enabled = request.Enabled;
+
+            db.AlertChannels.RemoveRange(alert.Channels);
+            alert.Channels = normalizedChannels
+                .Select(c => new AlertChannel { Type = c })
+                .ToList();
+
+            await db.SaveChangesAsync();
+
+            return Results.NoContent();
+        });
+
+        users.MapDelete("/{id:int}", async (
+            string userId,
+            int id,
+            AlertsDb db) =>
+        {
+            var alert = await db.Alerts.FirstOrDefaultAsync(a =>
+                a.Id == id && a.UserId == userId);
+
+            if (alert is null)
+                return Results.NotFound();
+
+            db.Alerts.Remove(alert);
+            await db.SaveChangesAsync();
+
+            return Results.NoContent();
+        });
+
+        return app;
+    }
+
+    private static bool TryNormalizeChannels(
+        IEnumerable<string>? requestedChannels,
+        IEnumerable<INotificationChannel> registeredChannels,
+        out List<string> normalizedChannels)
+    {
+        normalizedChannels = [];
+
+        if (requestedChannels is null)
+            return false;
+
+        var channelByType = registeredChannels.ToDictionary(
+            c => c.Type,
+            StringComparer.OrdinalIgnoreCase);
+
+        var requested = requestedChannels
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (requested.Count == 0 ||
+            requested.Any(c =>
+                string.IsNullOrWhiteSpace(c) ||
+                !channelByType.ContainsKey(c)))
+        {
+            return false;
         }
+
+        normalizedChannels = requested
+            .Select(c => channelByType[c].Type)
+            .ToList();
+
+        return true;
     }
 }
